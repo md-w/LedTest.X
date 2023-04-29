@@ -29,5 +29,5 @@
 .svn
 *.bak
 build/
-dist/
+# dist/
 production_hex/
