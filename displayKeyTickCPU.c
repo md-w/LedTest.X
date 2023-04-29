@@ -12,13 +12,12 @@ unsigned char keyDown;
 unsigned char keyHold;
 unsigned char selectedIndx = 0;
 
-bool tick100mSec = 0;
-bool tick3000mSec = 0;
-bool tick3000mSec2 = 0;
-bool tick200mSec = 0;
+bool tick250mSec = 0;
+bool tick500mSec = 0;
 bool tick1000mSec = 0;
-bool tick3min = 0;
-bool tick6min = 0;
+bool tick1000mSec2 = 0;
+bool tick3000mSec = 0;
+
 bool bToggleBitFast = 0;
 bool bToggleBitSlow = 0;
 
@@ -73,36 +72,21 @@ void displayISR(void) // 2msec time period
     static unsigned char keyStateSaved = 0;
     static unsigned char keyPressCounter = 0;
 
-    if (uiTickCount < 3000 - 1) { // 6*60*10ms = 6min
+    if (uiTickCount < 500 - 7 - 1) { //	
         uiTickCount++;
     } else {
         uiTickCount = 0;
-        tick3000mSec = 1;
-        tick3000mSec2 = 1;
-//        tick3min = 1;
-//        tick6min = 1;
-    }
-//    if ((uiTickCount % 1800) == 0) {
-//        tick3min = 1;
-//    }
-    if ((uiTickCount % 50) == 0) { // 100msec
-        tick100mSec = 1;
-    }
-    if ((uiTickCount % 100) == 0) { // 200msec
-        tick200mSec = 1;
-    }
-    if ((uiTickCount % 250) == 0) { // 500msec
-        bToggleBitFast = !bToggleBitFast;
-    }
-    if ((uiTickCount % 500) == 0) { // 1sec
         tick1000mSec = 1;
+        tick1000mSec2 = 1;
+    }
+    if ((uiTickCount % 250) == 0) {
         bToggleBitSlow = !bToggleBitSlow;
+        tick500mSec = 1;
     }
-    if ((uiTickCount % 1500) == 0) {
-        tick3000mSec = 1;
-        tick3000mSec2 = 1;
+    if ((uiTickCount % 125) == 0) {
+        bToggleBitFast = !bToggleBitFast;
+        tick250mSec = 1;
     }
-
 
     //    if (ucDispIndx == 0) {
     //        ucDispIndxPrevious = MODULE_SIZE - 1;
@@ -116,16 +100,17 @@ void displayISR(void) // 2msec time period
     DISP_MUX_PORT_DIGIT1 = 1;
     DISP_MUX_PORT_DIGIT2 = 1;
     DISP_MUX_PORT_DIGIT3 = 1;
-    
+
+
     DISP_DATA_PORT = ~(*(pucReadDispBuffer + ucDispIndx));
     //    DISP_MUX_PORT &= ~(0x80 >> ucDispIndx);
-    if(0 == ucDispIndx) {
+    if (0 == ucDispIndx) {
         DISP_MUX_PORT_DIGIT0 = 0;
-    } else if(1 == ucDispIndx) {
+    } else if (1 == ucDispIndx) {
         DISP_MUX_PORT_DIGIT1 = 0;
-    } else if(2 == ucDispIndx) {
+    } else if (2 == ucDispIndx) {
         DISP_MUX_PORT_DIGIT2 = 0;
-    } else if(3 == ucDispIndx) {
+    } else if (3 == ucDispIndx) {
         DISP_MUX_PORT_DIGIT3 = 0;
     }
     if (!DISP_KEY_COM_BIT)
@@ -169,14 +154,18 @@ void displayISR(void) // 2msec time period
 
 void initDisplay(void) {
     DISP_DATA_PORT_TRIS = 0x00;
-    DISP_MUX_PORT_TRIS = 0x00;
+    DISP_MUX_PORT_TRIS_DIGIT3 = 0;
+    DISP_MUX_PORT_TRIS_DIGIT2 = 0;
+    DISP_MUX_PORT_TRIS_DIGIT1 = 0;
+    DISP_MUX_PORT_TRIS_DIGIT0 = 0;
+    //    DISP_MUX_PORT_TRIS = 0x00;
     DISP_KEY_COM_BIT_TRIS = 1;
-    // DISP_KEY_COM_BIT					= 1;
+//    DISP_KEY_COM_BIT = 1;
     DISP_KEY_COM_BIT_LAT = 1; // enable pullup
-    DISP_KEY_COM_BIT_PULLUP = 0;
-
-    DISP_DATA_PORT = 0xFF;
-    DISP_MUX_PORT = 0xFF;
+    DISP_KEY_COM_BIT_PULLUP_ = 0;
+    //
+    //    DISP_DATA_PORT = 0xFF;
+    //    DISP_MUX_PORT = 0x00;
     bUseDispBuffer1ForReading = 1;
     pucReadDispBuffer = (unsigned char *) &ucDispBuffer1;
     pucDispBuffer = (unsigned char *) &ucDispBuffer2;

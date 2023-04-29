@@ -5,7 +5,7 @@
 #include <stdbool.h>
 
 #define MODULE_SIZE 4
-#define MAX_DIGIT 3
+#define MAX_DIGIT 4
 
 // #define DISPLAY_LONG		1
 #define DISPLAY_INT 1
@@ -23,20 +23,24 @@
 
 #define DISP_DATA_PORT LATD
 #define DISP_MUX_PORT LATB
-
+#define DISP_DATA_PORT_TRIS TRISD
 
 #define DISP_MUX_PORT_DIGIT3 LATBbits.LATB4
 #define DISP_MUX_PORT_DIGIT2 LATBbits.LATB5
 #define DISP_MUX_PORT_DIGIT1 LATBbits.LATB6
 #define DISP_MUX_PORT_DIGIT0 LATBbits.LATB7
 
+#define DISP_MUX_PORT_TRIS_DIGIT3 TRISBbits.TRISB4
+#define DISP_MUX_PORT_TRIS_DIGIT2 TRISBbits.TRISB5
+#define DISP_MUX_PORT_TRIS_DIGIT1 TRISBbits.TRISB6
+#define DISP_MUX_PORT_TRIS_DIGIT0 TRISBbits.TRISB7
 
-#define DISP_DATA_PORT_TRIS TRISD
-#define DISP_MUX_PORT_TRIS TRISB
+
+//#define DISP_MUX_PORT_TRIS TRISB
 #define DISP_KEY_COM_BIT PORTBbits.RB1
 #define DISP_KEY_COM_BIT_LAT LATBbits.LATB1
 #define DISP_KEY_COM_BIT_TRIS TRISBbits.TRISB1
-#define DISP_KEY_COM_BIT_PULLUP INTCON2bits.RBPU
+#define DISP_KEY_COM_BIT_PULLUP_ INTCON2bits.RBPU
 
 #define SEG_A 10
 #define SEG_B 11
@@ -76,16 +80,18 @@ extern unsigned char keyDown;
 extern unsigned char keyHold;
 extern unsigned char selectedIndx;
 
-extern bool tick100mSec;
-extern bool tick200mSec;
-extern bool tick3000mSec;
+//extern bool tick100mSec;
+extern bool tick250mSec;
+extern bool tick500mSec;
 extern bool tick1000mSec;
-extern bool tick3000mSec2;
+extern bool tick1000mSec2;
+extern bool tick3000mSec;
+//extern bool tick3000mSec2;
 //extern bool tick36000mSec1;
 //extern bool tick36000mSec2;
-extern bool tick3min;
-extern bool tick6min;
-extern bool bToggleTick6min;
+//extern bool tick3min;
+//extern bool tick6min;
+//extern bool bToggleTick6min;
 extern bool bToggleBitFast;
 extern bool bToggleBitSlow;
     

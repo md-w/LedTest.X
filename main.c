@@ -9,15 +9,15 @@
 // CONFIG2L
 #pragma config PWRT = ON        // Power-up Timer Enable bit (PWRT enabled)
 #pragma config BOREN = ON       // Brown-out Reset Enable bits (Brown-out Reset enabled and controlled by software (SBOREN is enabled))
-#pragma config BORV = 2         // Brown Out Reset Voltage bits ()
+#pragma config BORV = 2         // Brown Out Reset Voltage bits (Minimum setting)
 
 // CONFIG2H
-#pragma config WDT = ON        // Watchdog Timer Enable bit (WDT enabled)
+#pragma config WDT = ON         // Watchdog Timer Enable bit (WDT enabled)
 #pragma config WDTPS = 1024     // Watchdog Timer Postscale Select bits (1:1024)
 
 // CONFIG3H
-#pragma config CCP2MX = PORTC   // CCP2 MUX bit (CCP2 input/output is multiplexed with RC1)
-#pragma config PBADEN = OFF     // PORTB A/D Enable bit (PORTB<4:0> pins are configured as digital I/O on Reset)
+#pragma config CCP2MX = PORTBE  // CCP2 MUX bit (CCP2 input/output is multiplexed with RB3)
+#pragma config PBADEN = OFF      // PORTB A/D Enable bit (PORTB<4:0> pins are configured as analog input channels on Reset)
 #pragma config LPT1OSC = OFF    // Low-Power Timer1 Oscillator Enable bit (Timer1 configured for higher power operation)
 #pragma config MCLRE = ON       // MCLR Pin Enable bit (MCLR pin enabled; RE3 input pin disabled)
 
@@ -60,8 +60,40 @@
 // Use project enums instead of #define for ON and OFF.
 
 #include <xc.h>
-#include "tmr0.h"
+#include "tick.h"
 #include "displayKeyTickCPU.h"
+#include "eeprom_wrapper.h"
+
+#define PSWD                        10
+
+typedef struct _structControllerSP {
+    unsigned char ucLowSetPoint;
+} STRUCT_CONTROLLER_SP;
+
+unsigned char dispMainState = 0;
+unsigned char dispSubState = 0;
+unsigned char statusByte0 = 0;
+unsigned char statusByte1 = 0;
+unsigned char sec60Counter = 60;
+unsigned int fpsCounter = 0;
+unsigned int outputCounter = 2;
+unsigned int fps = 0;
+unsigned char ucPassword = PSWD + 5;
+bool interruptFlag = 0;
+bool interruptFlagDisp = 0;
+bool outputLatch = 0;
+bool alarmLatch = 0;
+STRUCT_CONTROLLER_SP SetPoint;
+
+#define RELAY_LAT LATBbits.LATB3
+#define LED_LAT_3 LATCbits.LATC5
+#define LED_LAT_2 LATCbits.LATC6
+#define LED_LAT_1 LATCbits.LATC7
+
+#define RELAY_TRIS TRISBbits.TRISB3
+#define LED_TRIS_3 TRISCbits.TRISC5
+#define LED_TRIS_2 TRISCbits.TRISC6
+#define LED_TRIS_1 TRISCbits.TRISC7
 
 #define _XTAL_FREQ 20000000
 
@@ -72,39 +104,25 @@ void DELAY_milliseconds(uint16_t milliseconds) {
 }
 
 void INTERRUPT_Initialize(void) {
-    // Enable Interrupt Priority Vectors
+    // Disable Interrupt Priority Vectors (16CXXX Compatibility Mode)
     RCONbits.IPEN = 0;
-
-    // Assign peripheral interrupt priority vectors
-
-
-    // TMRI - low priority
-    INTCON2bits.TMR0IP = 0;    
-
-    // RBI - low priority
-    INTCON2bits.RBIP = 0;  
 }
 
-void __interrupt(low_priority) INTERRUPT_InterruptManagerLow(void) {
+void __interrupt() INTERRUPT_InterruptManagerLow(void) {
     // interrupt handler
-    if (INTCONbits.TMR0IE == 1 && INTCONbits.TMR0IF == 1) {
-        TMR0_ISR();
+    if (INTCONbits.TMR0IE && INTCONbits.TMR0IF) {
+        // reload TMR0
+        TMR0L = timer0ReloadVal;
         displayISR();
-    } else if(INTCONbits.RBIE == 1 && INTCONbits.RBIF == 1) {
-        INTCONbits.RBIF = 0;
-    } else if(INTCON3bits.INT1E == 1 && INTCON3bits.INT1F == 1) {
-        INTCON3bits.INT1F = 0;
-    } else {
-        //Unhandled Interrupt
+        // clear the TMR0 interrupt flag
+        INTCONbits.TMR0IF = 0;
+    } else if (INTCONbits.INT0IE && INTCONbits.INT0IF) {
+        fpsCounter++;
+        interruptFlag = 1;
+        INTCONbits.INT0IF = 0;
     }
 }
 
-void OSCILLATOR_Initialize(void) {
-    // SCS INTOSC; OSTS intosc; IRCF 16MHz_HFINTOSC; IDLEN disabled; 
-    OSCCON = 0x72;
-    // INTSRC disabled; PLLEN disabled; TUN 0; 
-    OSCTUNE = 0x00;
-}
 
 #define INTERRUPT_GlobalInterruptEnable() (INTCONbits.GIE = 1)
 #define INTERRUPT_GlobalInterruptDisable() (INTCONbits.GIE = 0)
@@ -115,56 +133,141 @@ void OSCILLATOR_Initialize(void) {
 #define INTERRUPT_PeripheralInterruptEnable() (INTCONbits.PEIE = 1)
 #define INTERRUPT_PeripheralInterruptDisable() (INTCONbits.PEIE = 0)
 
-
-void SYSTEM_Initialize(void)
-{
+void SYSTEM_Initialize(void) {
 
     INTERRUPT_Initialize();
-    OSCILLATOR_Initialize();
-    TMR0_Initialize();
+    initDisplay();
+    initTimer0();
+    initExternalInterrupt();
+}
+
+void initVariables(void) {
+    readByte((unsigned char *) &SetPoint, 0, sizeof (SetPoint));
+    if ((SetPoint.ucLowSetPoint == 0) || (SetPoint.ucLowSetPoint > 100)) {
+        SetPoint.ucLowSetPoint = 10;
+    }
 }
 
 void main(void) {
     SYSTEM_Initialize();
-    // If using interrupts in PIC18 High/Low Priority Mode you need to enable the Global High and Low Interrupts
-    // If using interrupts in PIC Mid-Range Compatibility Mode you need to enable the Global and Peripheral Interrupts
-    // Use the following macros to:
-
-    // Enable high priority global interrupts
-    // INTERRUPT_GlobalInterruptHighEnable();
-
-    // Enable low priority global interrupts.
-    // INTERRUPT_GlobalInterruptLowEnable();
+    LED_TRIS_3 = 0;
+    LED_TRIS_2 = 0;
+    LED_TRIS_1 = 0;
+    RELAY_TRIS = 0;
+    RELAY_LAT = 0;
     INTERRUPT_GlobalInterruptEnable();
-
-    // Disable high priority global interrupts
-    //INTERRUPT_GlobalInterruptHighDisable();
-
-    // Disable low priority global interrupts.
-    //INTERRUPT_GlobalInterruptLowDisable();
-
-    // Enable the Peripheral Interrupts
-    //INTERRUPT_PeripheralInterruptEnable();
-
-    // Disable the Peripheral Interrupts
-    // INTERRUPT_PeripheralInterruptDisable();
-
-    initDisplay();
-    
-    unsigned int i = 0;
-//    DISP_DATA_PORT = 0x00;
-//    DISP_MUX_PORT = 0x00;
-//    DISP_DATA_PORT_TRIS = 0x00;
-//    DISP_MUX_PORT_TRIS = 0x00;
-    displayInt(i, 1);
-    display();
+    initVariables();
     while (1) {
+        statusByte0 = 0x00;
+        statusByte1 = 0x00;
         if (tick1000mSec) {
             tick1000mSec = 0;
-            i++;
-            displayInt(i, 1);
-            display();
-            ClrWdt();
+            if (sec60Counter == 0) {
+                sec60Counter = 60;
+                fps = fpsCounter;
+                fpsCounter = 0;
+                if (fps < (SetPoint.ucLowSetPoint)) {
+                    if (outputCounter == 0) {
+                        outputCounter = 2;
+                        outputLatch = 1;
+                    }
+                    outputCounter--;
+                } else if (fps > (SetPoint.ucLowSetPoint)) {
+                    outputCounter = 2;
+                    outputLatch = 0;
+                }
+
+            }
+            sec60Counter--;
         }
+        if (tick250mSec) {
+            tick250mSec = 0;
+            interruptFlagDisp = 0;
+            if (interruptFlag) {
+                interruptFlag = 0;
+                interruptFlagDisp = 1;
+            }
+        }
+
+        if (interruptFlagDisp) {
+            statusByte1 |= 0x01;
+        }
+        if (outputLatch) {
+            RELAY_LAT = 1;
+            statusByte1 |= 0x02;
+        } else {
+            RELAY_LAT = 0;
+        }
+//        if (alarmLatch) {
+//            
+//        } else {
+//            
+//        }
+        switch (dispMainState) {
+            case 0:
+                displayInt(fps, 0);
+                if (keyDown & DNKEY_MASK) {
+                    outputCounter = 2;
+                    outputLatch = 0;
+                    keyDown = 0x00;
+                    keyHold = 0x00;                    
+                }
+                if (keyDown & PROKEY_MASK) {
+                    keyDown = 0x00;
+                    keyHold = 0x00;
+                    dispMainState++;
+                }
+                break;
+            case 1: //enter PRO
+                statusByte0 |= 0x01;
+                digitAssign(SEG_P, 2);
+                digitAssign(SEG_R, 1);
+                digitAssign(SEG_O, 0);
+                if (keyDown & PROKEY_MASK) {
+                    keyDown = 0x00;
+                    keyHold = 0x00;
+                    dispMainState = 0;
+                }
+                if (keyDown & ENTKEY_MASK) {
+                    keyDown = 0x00;
+                    keyHold = 0x00;
+                    dispMainState++;
+                    dispSubState = 0;
+                    selectedIndx = 0;
+                }
+                break;
+            case 2: //PRO
+                statusByte0 |= 0x01;
+                checkAndInrDcrChar(&SetPoint.ucLowSetPoint, 60, 0);
+                displayInt(SetPoint.ucLowSetPoint, 0);
+                if ((keyDown & PROKEY_MASK) || (keyDown & ENTKEY_MASK)) {
+                    keyDown = 0x00;
+                    keyHold = 0x00;
+                    dispMainState = 0;
+                    writeByte((unsigned char *) &SetPoint, 0, sizeof (SetPoint));
+                }
+                break;
+            default:
+                dispMainState = 0;
+                break;
+        }
+        if (statusByte0 & 0x01) {
+            LED_LAT_1 = 0;
+        } else {
+            LED_LAT_1 = 1;
+        }
+        if (statusByte1 & 0x01) {
+            LED_LAT_2 = 0;
+        } else {
+            LED_LAT_2 = 1;
+        }
+        if (statusByte1 & 0x02) {
+            LED_LAT_3 = 0;
+        } else {
+            LED_LAT_3 = 1;
+        }
+        directAssign(statusByte0, 3);
+        display();
+        ClrWdt();
     }
 }
